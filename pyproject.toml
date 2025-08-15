@@ -1,5 +1,5 @@
 [project]
-name = "bracetree"
+name = "bracecollapse"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
@@ -9,6 +9,9 @@ authors = [
 requires-python = ">=3.13"
 dependencies = []
 
+[tool.hatch.build.targets.wheel]
+packages = ["src/bracecollapse"]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
@@ -16,4 +19,8 @@ build-backend = "hatchling.build"
 [dependency-groups]
 analysis = [
     "ipykernel>=6.30.1",
+]
+dev = [
+    "ipykernel>=6.30.1",
+    "pytest>=8.4.1",
 ]
