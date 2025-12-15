@@ -5,6 +5,9 @@ import re
 from typing import Any, Literal, Sequence
 
 TOKEN_RE = re.compile(r"([A-Za-z\u00C0-\u00FF]+)|([0-9]+)|([^A-Za-z\u00C0-\u00FF0-9])")
+TYPE_ALPHA = 0
+TYPE_NUMERIC = 1
+TYPE_OTHER = 2
 
 
 class Expression(metaclass=ABCMeta):
@@ -167,13 +170,13 @@ class GlobExpression(Expression):
 def make_expression(
     type, tokens: Sequence[str], alpha: str, numeric: str
 ) -> Expression:
-    if type == 0:
+    if type == TYPE_ALPHA:
         if alpha == "set":
             return SetExpression(type, tokens)
         elif alpha == "glob":
             return GlobExpression(type)
         raise ValueError(f"Unknown alpha type: {alpha}")
-    elif type == 1:
+    elif type == TYPE_NUMERIC:
         if numeric == "set":
             return SetExpression(type, tokens)
         elif numeric == "rangeset":
@@ -257,7 +260,7 @@ class PrefixTreeNode:
             #         yield (tokens[0], *child_pattern)
             #     continue
 
-            if type == 2:
+            if type == TYPE_OTHER:
                 # If the type is 'other', yield literal patterns
                 for token in tokens:
                     for child_pattern in child_patterns:
