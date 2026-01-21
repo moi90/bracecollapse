@@ -1,6 +1,7 @@
 import argparse
 from collections.abc import Iterable
 from pathlib import Path
+import sys
 
 import pathspec
 
@@ -26,7 +27,7 @@ def list_files_recursively(
     for file_path in file_iterator:
         filename = str(file_path.relative_to(directory))
         if file_path.is_dir():
-            filename += "/"
+            continue
 
         if spec and spec.match_file(filename):
             continue
@@ -69,10 +70,13 @@ def main():
 
     # Read names
     if args.names_from:
+        print(f"Reading names from {args.names_from} ...", file=sys.stderr)
         with args.names_from.open("r") as f:
             names = [line.strip() for line in f if line.strip()]
     else:
         target_dir = args.path or Path(".")
+
+        print(f"Scanning directory {target_dir} ...", file=sys.stderr)
 
         if not target_dir.is_dir():
             raise ValueError(f"The path {target_dir} is not a directory.")
