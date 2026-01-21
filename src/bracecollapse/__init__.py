@@ -223,8 +223,8 @@ class PrefixTreeNode:
 
     def to_patterns(
         self,
-        alpha,
-        numeric,
+        alpha: Literal["set", "glob"] = "set",
+        numeric: Literal["set", "rangeset", "range", "glob"] = "rangeset",
     ) -> Iterable[Pattern]:
         if self.is_terminal:
             yield ()
@@ -274,8 +274,8 @@ class PrefixTreeNode:
 
 def bracecollapse(
     strings: Collection[str],
-    numeric: Literal["set", "rangeset", "range", "glob"] = "rangeset",
     alpha: Literal["set", "glob"] = "set",
+    numeric: Literal["set", "rangeset", "range", "glob"] = "rangeset",
 ) -> list[str]:
     """
     Collapse a collection of raw strings into a list of pattern strings with brace expansion.

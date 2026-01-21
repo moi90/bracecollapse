@@ -7,7 +7,9 @@ authors = [
     { name = "Simon-Martin Schröder", email = "mschroeder@geomar.de" }
 ]
 requires-python = ">=3.13"
-dependencies = []
+dependencies = [
+    "pathspec>=1.0.3",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/bracecollapse"]
