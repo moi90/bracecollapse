@@ -65,6 +65,18 @@ def main():
         action="append",
         help="Patterns to exclude from processing. Can be specified multiple times.",
     )
+    arg_parser.add_argument(
+        "--alpha",
+        choices=["set", "glob", "format"],
+        default="set",
+        help="Method to collapse alphabetic tokens. Default is 'set'.",
+    )
+    arg_parser.add_argument(
+        "--numeric",
+        choices=["set", "rangeset", "range", "glob", "format"],
+        default="format",
+        help="Method to collapse numeric tokens. Default is 'format'.",
+    )
 
     args = arg_parser.parse_args()
 
@@ -90,7 +102,7 @@ def main():
         tree.insert(name)
 
     # Convert the prefix tree to patterns
-    patterns = tree.to_patterns(alpha="set", numeric="rangeset")
+    patterns = tree.to_patterns(alpha=args.alpha, numeric=args.numeric)
 
     for pattern in patterns:
         print("".join(str(p) for p in pattern))

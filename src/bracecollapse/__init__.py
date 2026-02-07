@@ -4,10 +4,13 @@ from dataclasses import dataclass
 import re
 from typing import Any, Literal, Sequence
 
-TOKEN_RE = re.compile(r"([A-Za-z\u00C0-\u00FF]+)|([0-9]+)|([^A-Za-z\u00C0-\u00FF0-9])")
+TOKEN_RE = re.compile(
+    r"([A-Za-z\u00C0-\u00FF]+)|(0+[0-9]+)|([0-9]+)|([^A-Za-z\u00C0-\u00FF0-9])"
+)
 TYPE_ALPHA = 0
-TYPE_NUMERIC = 1
-TYPE_OTHER = 2
+TYPE_PADDED_NUMERIC = 1
+TYPE_NUMERIC = 2
+TYPE_OTHER = 3
 
 
 class Expression(metaclass=ABCMeta):
@@ -167,16 +170,45 @@ class GlobExpression(Expression):
         return "*"
 
 
+class FormatExpression(Expression):
+    def __init__(self, type: int, width: int | None = None):
+        super().__init__(type)
+        self.width = width
+
+    def __hash__(self) -> int:
+        return hash((self.type, self.width, "{}"))
+
+    def __eq__(self, other: Any) -> bool:
+        if not isinstance(other, FormatExpression):
+            return NotImplemented
+        return self.type == other.type and self.width == other.width
+
+    def __str__(self) -> str:
+        if self.type == TYPE_ALPHA:
+            return "{:s}"
+
+        if self.type == TYPE_PADDED_NUMERIC:
+            assert self.width is not None
+            return f"{{:0{self.width}d}}"
+
+        if self.type == TYPE_NUMERIC:
+            return "{:d}"
+
+        raise ValueError(f"Unknown type for FormatStrExpression: {self.type}")
+
+
 def make_expression(
-    type, tokens: Sequence[str], alpha: str, numeric: str
+    type, width: int | None, tokens: Sequence[str], alpha: str, numeric: str
 ) -> Expression:
     if type == TYPE_ALPHA:
         if alpha == "set":
             return SetExpression(type, tokens)
         elif alpha == "glob":
             return GlobExpression(type)
+        elif alpha == "format":
+            return FormatExpression(type, width)
         raise ValueError(f"Unknown alpha type: {alpha}")
-    elif type == TYPE_NUMERIC:
+    elif type in (TYPE_PADDED_NUMERIC, TYPE_NUMERIC):
         if numeric == "set":
             return SetExpression(type, tokens)
         elif numeric == "rangeset":
@@ -185,6 +217,8 @@ def make_expression(
             return RangeExpression(type, tokens)
         elif numeric == "glob":
             return GlobExpression(type)
+        elif numeric == "format":
+            return FormatExpression(type, width)
         raise ValueError(f"Unknown numeric type: {numeric}")
 
     raise ValueError(f"Unknown type: {type}")
@@ -198,13 +232,17 @@ class PrefixTreeNode:
 
     def insert(self, string: str):
         """
-        Insert a list of tokens into the prefix tree.
+        Insert a string into the prefix tree.
+
+        The string is tokenized into alpha, numeric, and other tokens
+        which are treated as atoms in the tree.
 
         Args:
-            tokens: A list of tokens to insert.
+            string: A string to insert.
         """
 
-        # Tokenize the strings
+        # Tokenize the string.
+        # (Each match is a tuple of (alpha, numeric, other), only one of which is non-empty.)
         matches: list[tuple[str, str, str]] = TOKEN_RE.findall(string)
 
         if not matches:
@@ -223,8 +261,8 @@ class PrefixTreeNode:
 
     def to_patterns(
         self,
-        alpha: Literal["set", "glob"] = "set",
-        numeric: Literal["set", "rangeset", "range", "glob"] = "rangeset",
+        alpha: Literal["set", "glob", "format"] = "set",
+        numeric: Literal["set", "rangeset", "range", "glob", "format"] = "rangeset",
     ) -> Iterable[Pattern]:
         if self.is_terminal:
             yield ()
@@ -232,33 +270,43 @@ class PrefixTreeNode:
         if not self.children:
             return
 
-        # Convert children
-        children_patterns = [
-            (token, tuple(child.to_patterns(alpha, numeric)))
-            for token, child in self.children.items()
-        ]
-
-        # # Naive placeholder implementation that reproduces the input
-        # for token, child_patterns in patterns:
-        #     for child_pattern in child_patterns:
-        #         yield (token, *child_pattern)
-
         # Group children by type and patterns
-        # (type, patterns) => [(token, patterns), ...]
+        # (type, width, patterns) => [token, ...]
         children_by_type_and_patterns: dict[
-            tuple[int, tuple[Pattern, ...]], list[str]
+            tuple[int, int | None, frozenset[Pattern]], list[str]
         ] = {}
-        for token, child_patterns in children_patterns:
+        for token, child in self.children.items():
+            child_patterns = frozenset(child.to_patterns(alpha, numeric))
+            width = (
+                len(token)
+                if child.type in (TYPE_PADDED_NUMERIC, TYPE_NUMERIC)
+                else None
+            )
             children_by_type_and_patterns.setdefault(
-                (self.children[token].type, child_patterns), []
+                (self.children[token].type, width, child_patterns), []
             ).append(token)
 
-        for (type, child_patterns), tokens in children_by_type_and_patterns.items():
-            # if len(tokens) == 1:
-            #     # If there's only one token, yield a literal pattern
-            #     for child_pattern in child_patterns:
-            #         yield (tokens[0], *child_pattern)
-            #     continue
+        # Padded numeric tokens "steal" from unpadded numeric tokens if they have the same width
+        for type, width, child_patterns in list(children_by_type_and_patterns.keys()):
+            if type != TYPE_PADDED_NUMERIC:
+                continue
+            unpadded_key = (TYPE_NUMERIC, width, child_patterns)
+            if unpadded_key in children_by_type_and_patterns:
+                children_by_type_and_patterns[unpadded_key].extend(
+                    children_by_type_and_patterns[(type, width, child_patterns)]
+                )
+                del children_by_type_and_patterns[(type, width, child_patterns)]
+
+        for (
+            type,
+            width,
+            child_patterns,
+        ), tokens in children_by_type_and_patterns.items():
+            if len(tokens) == 1:
+                # If there's only one token, yield a literal pattern
+                for child_pattern in child_patterns:
+                    yield (tokens[0], *child_pattern)
+                continue
 
             if type == TYPE_OTHER:
                 # If the type is 'other', yield literal patterns
@@ -267,16 +315,19 @@ class PrefixTreeNode:
                         yield (token, *child_pattern)
                 continue
 
-            # If there are multiple tokens (that are not type==2), yield an expression pattern
+            # If there are multiple tokens (that are not type==TYPE_OTHER), yield an expression pattern
             for child_pattern in child_patterns:
-                yield (make_expression(type, tokens, alpha, numeric), *child_pattern)
+                yield (
+                    make_expression(type, width, tokens, alpha, numeric),
+                    *child_pattern,
+                )
 
 
 def bracecollapse(
     strings: Collection[str],
-    alpha: Literal["set", "glob"] = "set",
-    numeric: Literal["set", "rangeset", "range", "glob"] = "rangeset",
-) -> list[str]:
+    alpha: Literal["set", "glob", "format"] = "set",
+    numeric: Literal["set", "rangeset", "range", "glob", "format"] = "rangeset",
+) -> set[str]:
     """
     Collapse a collection of raw strings into a list of pattern strings with brace expansion.
 
@@ -295,4 +346,4 @@ def bracecollapse(
     # Convert the prefix tree to patterns
     patterns = root.to_patterns(alpha=alpha, numeric=numeric)
 
-    return ["".join(str(expr) for expr in pattern) for pattern in patterns]
+    return {"".join(str(expr) for expr in pattern) for pattern in patterns}
