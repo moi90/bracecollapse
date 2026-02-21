@@ -36,6 +36,14 @@ class Expression(metaclass=ABCMeta):
 
 
 class SetExpression(Expression):
+    """
+    Expression that expands to a comma-separated set.
+
+    Examples:
+        SetExpression(TYPE_ALPHA, ['a', 'b', 'c']) => "{a,b,c}"
+        SetExpression(TYPE_ALPHA, ['x']) => "x" (single element)
+    """
+
     def __init__(self, type: int, tokens: Sequence[str]):
         super().__init__(type)
         self.tokens = tuple(sorted(tokens))
@@ -60,6 +68,16 @@ Pattern = tuple[ExpressionOrLiteral, ...]
 
 
 class RangeSetExpression(Expression):
+    """
+    Expression that expands to a set with consecutive numeric ranges collapsed.
+
+    Consecutive integers are represented as ranges, separated by commas.
+
+    Examples:
+        RangeSetExpression(TYPE_NUMERIC, ['1', '2', '3', '5', '6']) => "{1..3,5..6}"
+        RangeSetExpression(TYPE_NUMERIC, ['1']) => "1" (single element)
+    """
+
     def __init__(self, type: int, tokens: Sequence[str]):
         super().__init__(type)
         self.ranges = tuple(self._parse_ranges(tokens))
@@ -120,6 +138,14 @@ class RangeSetExpression(Expression):
 
 
 class RangeExpression(Expression):
+    """
+    Expression that expands to a range from minimum to maximum value.
+
+    Examples:
+        RangeExpression(TYPE_NUMERIC, ['1', '5', '9']) => "{1..9}"
+        RangeExpression(TYPE_NUMERIC, ['5']) => "5" (single element)
+    """
+
     def __init__(self, type: int, tokens: Sequence[str]):
         super().__init__(type)
         self.range = self._parse_range(tokens)
@@ -155,6 +181,13 @@ class RangeExpression(Expression):
 
 
 class GlobExpression(Expression):
+    """
+    Expression that matches any token of a given type.
+
+    Examples:
+        GlobExpression(TYPE_ALPHA) => "*"
+    """
+
     def __init__(self, type: int):
         super().__init__(type)
 
