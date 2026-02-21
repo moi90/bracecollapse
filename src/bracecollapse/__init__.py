@@ -1,7 +1,7 @@
+import re
 from abc import ABCMeta, abstractmethod
 from collections.abc import Collection, Hashable, Iterable
 from dataclasses import dataclass
-import re
 from typing import Any, Literal, Sequence
 
 TOKEN_RE = re.compile(
@@ -203,7 +203,20 @@ class GlobExpression(Expression):
         return "*"
 
 
-class FormatExpression(Expression):
+class TypeExpression(Expression):
+    """
+    Expression using angle bracket notation to specify types precisely.
+
+    In contrast to FormatStrExpression, this is intended to co-exist
+    with brace expansion syntax. Uses angle brackets
+    to denote type with optional padding width.
+
+    Examples:
+        TypeExpression(TYPE_ALPHA, None) => "<str>"
+        TypeExpression(TYPE_NUMERIC, None) => "<int>"
+        TypeExpression(TYPE_PADDED_NUMERIC, 3) => "<int03>"
+    """
+
     def __init__(self, type: int, width: int | None = None):
         super().__init__(type)
         self.width = width
@@ -212,9 +225,34 @@ class FormatExpression(Expression):
         return hash((self.type, self.width, "{}"))
 
     def __eq__(self, other: Any) -> bool:
-        if not isinstance(other, FormatExpression):
+        if not isinstance(other, FormatStrExpression):
             return NotImplemented
         return self.type == other.type and self.width == other.width
+
+    def __str__(self) -> str:
+        if self.type == TYPE_ALPHA:
+            return "<str>"
+
+        if self.type == TYPE_PADDED_NUMERIC:
+            assert self.width is not None
+            return f"<int0{self.width}>"
+
+        if self.type == TYPE_NUMERIC:
+            return "<int>"
+
+        raise ValueError(f"Unknown type for TypeExpression: {self.type}")
+
+
+class FormatStrExpression(TypeExpression):
+    """Expression using Python format string syntax to specify types precisely.
+
+    Note: This format can collide with brace expansion syntax.
+
+    Examples:
+        FormatStrExpression(TYPE_ALPHA, None) => "{:s}"
+        FormatStrExpression(TYPE_NUMERIC, None) => "{:d}"
+        FormatStrExpression(TYPE_PADDED_NUMERIC, 3) => "{:03d}"
+    """
 
     def __str__(self) -> str:
         if self.type == TYPE_ALPHA:
@@ -239,7 +277,9 @@ def make_expression(
         elif alpha == "glob":
             return GlobExpression(type)
         elif alpha == "format":
-            return FormatExpression(type, width)
+            return FormatStrExpression(type, width)
+        elif alpha == "type":
+            return TypeExpression(type, width)
         raise ValueError(f"Unknown alpha type: {alpha}")
     elif type in (TYPE_PADDED_NUMERIC, TYPE_NUMERIC):
         if numeric == "set":
@@ -251,7 +291,9 @@ def make_expression(
         elif numeric == "glob":
             return GlobExpression(type)
         elif numeric == "format":
-            return FormatExpression(type, width)
+            return FormatStrExpression(type, width)
+        elif numeric == "type":
+            return TypeExpression(type, width)
         raise ValueError(f"Unknown numeric type: {numeric}")
 
     raise ValueError(f"Unknown type: {type}")
@@ -294,8 +336,10 @@ class PrefixTreeNode:
 
     def to_patterns(
         self,
-        alpha: Literal["set", "glob", "format"] = "set",
-        numeric: Literal["set", "rangeset", "range", "glob", "format"] = "rangeset",
+        alpha: Literal["set", "glob", "format", "type"] = "set",
+        numeric: Literal[
+            "set", "rangeset", "range", "glob", "format", "type"
+        ] = "rangeset",
     ) -> Iterable[Pattern]:
         if self.is_terminal:
             yield ()
@@ -358,8 +402,8 @@ class PrefixTreeNode:
 
 def bracecollapse(
     strings: Collection[str],
-    alpha: Literal["set", "glob", "format"] = "set",
-    numeric: Literal["set", "rangeset", "range", "glob", "format"] = "rangeset",
+    alpha: Literal["set", "glob", "format", "type"] = "set",
+    numeric: Literal["set", "rangeset", "range", "glob", "format", "type"] = "rangeset",
 ) -> set[str]:
     """
     Collapse a collection of raw strings into a list of pattern strings with brace expansion.

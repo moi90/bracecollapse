@@ -82,7 +82,7 @@ def test_glob():
     assert bracecollapse(["foo", "bar", "baz"], alpha="glob") == {"*"}
 
 
-def test_formatcollapse():
+def test_collapse_format():
     assert bracecollapse(["001", "002", "003"], numeric="format") == {"{:03d}"}
     assert bracecollapse(["1", "2", "3"], numeric="format") == {"{:d}"}
     assert bracecollapse(["foo.001", "foo.002", "foo.003"], numeric="format") == {
@@ -91,3 +91,16 @@ def test_formatcollapse():
     assert bracecollapse(["a.001.b", "a.002.b", "a.003.b"], numeric="format") == {
         "a.{:03d}.b"
     }
+
+
+def test_collapse_type():
+    assert bracecollapse(["001", "002", "003"], numeric="type") == {"<int03>"}
+    assert bracecollapse(["1", "2", "3"], numeric="type") == {"<int>"}
+    assert bracecollapse(["foo.001", "foo.002", "foo.003"], numeric="type") == {
+        "foo.<int03>"
+    }
+    assert bracecollapse(["a.001.b", "a.002.b", "a.003.b"], numeric="type") == {
+        "a.<int03>.b"
+    }
+    assert bracecollapse(["foo", "bar", "baz"], alpha="type") == {"<str>"}
+    assert bracecollapse(["foo.a", "foo.b", "foo.c"], alpha="type") == {"foo.<str>"}
